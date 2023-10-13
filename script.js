@@ -3,24 +3,47 @@ const ctx = canvas.getContext('2d');
 
 const pixelSize = 4;
 const rootPixelSize = 2;
-const text = "Pixelate";
 const font = "30px Arial";
-
-canvas.width = 120;
-canvas.height = 80;
-
 ctx.font = font;
 ctx.fillStyle = "#000000";
-ctx.fillText(text, canvas.width / 2 - ctx.measureText(text).width / 2, canvas.height / 2);
 
-const canvasSize = canvas.width * canvas.height;
+var text = wrapText(ctx, "This is a test of the dissolve effect on a much longer input, as user input is expected to be rather long");
+console.log(text)
 
-const decay = 0.99;
+canvas.height = 30 * (text.split('\n').length + 2);
+const textWidth = ctx.measureText(text).width * pixelSize;
+canvas.width = textWidth + 20;
+ctx.font = font;
 
-const decayCoefficient = 20;
+i = Math.floor(text.split('\n').length / 2) * -1;
+for (var line of text.split('\n')) {
+    ctx.fillText(line, canvas.width / 2 - ctx.measureText(line).width / 2, canvas.height / 2 + i * 30);
+    i += 1;
+}
 
-function getRandomBoolean(threshold = decay) {
-    return Math.random() > threshold;
+
+const pixelsProportionPerIteration = 0.005;
+
+function wrapText(context, text) {
+    var words = text.split(' ');
+    var line = '';
+    var wrappedText = '';
+
+    for (var n = 0; n < words.length; n++) {
+        var testLine = line + words[n] + ' ';
+        var metrics = context.measureText(testLine);
+        var testWidth = metrics.width;
+        var maxWidth = window.innerWidth;
+        if (testWidth > maxWidth && n > 0) {
+            wrappedText += line + '\n';
+            line = words[n] + ' ';
+        } else {
+            line = testLine;
+        }
+    }
+
+    wrappedText += line;
+    return wrappedText;
 }
 
 function isPixelVisible(data, index) {
@@ -36,66 +59,34 @@ function erasePixel(data, index) {
 }
 
 let pixelIndices = [];
+const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+const data = imageData.data;
 
-function dissolve() {
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    let hasVisiblePixels = false;
+for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+        const i = (y * canvas.width + x) * pixelSize;
 
-    if (pixelIndices.length > 0) {
-        console.log(pixelIndices);
-        let newPixelIndices = [];
-
-        for (let pair of pixelIndices) {
-            console.log(pair)
-            const [x, y] = pair;
-            console.log(x, y)
-            const i = (y * canvas.width + x) * pixelSize;
-
-            if (isPixelVisible(data, i)) {
-                hasVisiblePixels = true;
-
-                if (getRandomBoolean(decay - (pixelIndices.length / canvasSize) * decayCoefficient * (1 - decay))) {
-                    for (let py = 0; py < pixelSize; py++) {
-                        for (let px = 0; px < pixelSize; px++) {
-                            const pi = ((y + py) * canvas.width + (x + px)) * 4;
-                            erasePixel(data, pi);
-                        }
-                    }
-                } else {
-                    newPixelIndices.push([x, y]);
-                }
-            }
-
-        }
-        pixelIndices = newPixelIndices;
-    } else {
-        for (let y = 0; y < canvas.height; y += 1) {
-            for (let x = 0; x < canvas.width; x += 1) {
-                const i = (y * canvas.width + x) * pixelSize;
-
-                if (isPixelVisible(data, i)) {
-                    hasVisiblePixels = true;
-
-                    if (getRandomBoolean()) {
-                        for (let py = 0; py < pixelSize; py++) {
-                            for (let px = 0; px < pixelSize; px++) {
-                                const pi = ((y + py) * canvas.width + (x + px)) * 4;
-                                erasePixel(data, pi);
-                            }
-                        }
-                    } else {
-                        pixelIndices.push([x, y]);
-                    }
-                }
-            }
+        if (isPixelVisible(data, i)) {
+            pixelIndices.push([x, y]);
         }
     }
+}
+
+const pixelsPerIteration = pixelsProportionPerIteration * pixelIndices.length;
+
+function dissolve() {
+    for (let i = 0; i < pixelsPerIteration && pixelIndices.length; i++) {
+        const index = Math.floor(Math.random() * pixelIndices.length);
+        const [x, y] = pixelIndices[index];
+        erasePixel(data, (y * canvas.width + x) * pixelSize);
+        pixelIndices.splice(index, 1);
+    }
+
 
     ctx.putImageData(imageData, 0, 0);
 
     // Continue the animation if there are still visible pixels.
-    if (hasVisiblePixels) {
+    if (pixelIndices.length) {
         requestAnimationFrame(dissolve);
     } else {
         console.log('done!')
